@@ -1,7 +1,7 @@
 import {db,errorResponse,runtime,allEvents} from '@/lib/store';
 import {z} from 'zod';import {deliver} from '@/lib/notify';
-// This endpoint is protected by owner-private Sites dispatch. For public hosting, UPDATE_SECRET is mandatory.
-export function authorized(req:Request){if(runtime.UPDATE_SECRET)return req.headers.get('authorization')==='Bearer '+runtime.UPDATE_SECRET;return runtime.PUBLIC_CALENDAR_ENABLED!=='true';}
+// Public backend: all management operations require the server-side secret.
+export function authorized(req:Request){return !!runtime.UPDATE_SECRET&&req.headers.get('authorization')==='Bearer '+runtime.UPDATE_SECRET;}
 const https=z.string().url().refine(v=>new URL(v).protocol==='https:');
 const day=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 const item=z.object({id:z.string().regex(/^[a-z0-9-]{1,120}$/),category:z.enum(['exhibitions','sports','popup','other']),title:z.string().min(1).max(150),subtitle:z.string().max(200),provider:z.string().min(1).max(200),location:z.string().max(300),startDate:day,endDate:day,dateLabel:z.string().max(200),status:z.enum(['open','announced','no_booking','sold_out','cancelled']),bookingOpensAt:z.string().datetime({offset:true}).nullable(),description:z.string().max(1800),freeNote:z.string().min(1).max(500),sourceUrl:https,bookingUrl:https.nullable(),kind:z.string().max(100),verifiedAt:z.string().datetime({offset:true})}).refine(e=>!e.startDate||!e.endDate||e.endDate>=e.startDate,'活动结束时间早于开始时间');

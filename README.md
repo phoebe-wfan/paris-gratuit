@@ -1,66 +1,52 @@
 # 巴黎葛朗台 · Paris Gratuit
 
-[打开网站](https://paris-gratuit.tastyplum.chatgpt.site) · 当前访问权限仅所有者。
+独立网页，访客不需要 ChatGPT 账号。
 
-巴黎免费活动与预约提醒。四个栏目：免费展览、免费体育赛事、免费 Pop-up、其他免费活动。
+## 网页发布
 
-## 可用功能
+GitHub Pages 使用 main 分支的 /docs 目录。网页地址（开启 Pages 后生效）：https://phoebe-wfan.github.io/paris-gratuit/
 
-- 官方来源、免费条件、巴黎当地日期、预约状态与核实日期。
-- 按活动、场馆/主办方、栏目关注；D1 保存，随账号跨设备读取。
-- 标记已预约，停止该活动的开票通知。
-- 已确认开票时间导出 `.ics`，含苹果日历 DISPLAY 提醒。
-- 单日活动日期单独导出，避免把活动日期误作开票日期。
-- Instagram、TikTok、官网链接提交队列；核实后才发布。
-- 后台批量更新与回读；已取消的活动隐藏，过期内容自动退出清单。
-- Resend 邮件发送接口与幂等去重。服务未配置时，界面明确显示未连接。
+在仓库 Settings → Pages → Build and deployment 选择 Deploy from a branch，Branch 选择 main，Folder 选择 /docs，保存。仓库已包含构建完成的网页，不需要先安装依赖。
 
-## 当前内容
+## 功能与状态
 
-2026-10-08 核实的首批活动，来源见 `lib/catalog.ts`。静态种子与 D1 更新合并；后续更新使用同一稳定活动 ID 覆盖对应记录。
+四个栏目：免费展览、免费体育赛事、免费 Pop-up、其他免费活动。活动展示官方来源、免费条件和核实日期。
 
-没有确认具体开票时间的记录保持 `bookingOpensAt: null`。预约入口存在不等于余票充足。免费体育参与活动明确标注不是观赛赛事。快闪免费入场不意味着商品或餐饮免费。
+前端位于 GitHub Pages，后台是 Cloudflare Worker + D1。关注按随机访客凭证保存到数据库，不使用 ChatGPT 用户身份；浏览器仅保存访问凭证，关注记录不在本地存储。换设备暂不会自动同步，不要清除本网站的访客凭证。
 
-## 开发与发布
+苹果日历可导出 .ics，也可通过个人随机订阅链接读取后台的最新开票时间。未知的开票时间不生成提醒；活动日期独立导出。已预约只停止开票提醒，仍可导出参观日期。请勿公开个人日历订阅链接。
 
-Node >=22.13，pnpm 11.25（保留锁文件）。
+邮件发送代码已准备，但未启用：Resend 账号尚无验证发信域名，也没有完成接收邮箱验证流程。页面不会让用户开启一个无法发送的通知。接好验证域名、发信密钥及邮箱确认后才能开启。
+
+## 构建
+
+Node >=22.13，pnpm 11.25，保留锁文件。
 
 ```sh
 pnpm install
-pnpm db:generate  # 只在改动 schema 后生成新增迁移
-pnpm build
+node scripts/build-pages.mjs  # 构建 /docs 独立前端
+pnpm build                  # 构建 Worker 后台
+pnpm db:generate            # 仅 schema 变化时生成新迁移
 ```
 
-部署目标是带 D1 的 Cloudflare Worker（Vinext），不是静态 GitHub Pages。GitHub 存放源代码，不会自动提供数据库或发送邮件。Sites 的 `.openai/hosting.json` 声明逻辑 D1 `DB`；部署系统负责实际资源及迁移。
+`pages.html` 设置非秘密后台地址，`vite.config.pages.ts` 构建普通 React 网页。后台可以迁到其他 Cloudflare Workers 托管并修改地址，不需要依赖 ChatGPT 登录。
 
-## 后台更新约定
+## 后台访问
 
-`GET /api/update` 返回全部活动及未审阅提交；`PUT /api/update` 接收 `{ "events": [EventRecord], "reviewedSubmissionIds": [] }`。省略记录不会删除现有活动；取消时使用 `status: "cancelled"`。每次写入后必须重新 GET 核实。
+公开读接口 /api/catalog。关注 /api/preferences 与提交 /api/submissions 使用 X-Visitor-Key（64位随机十六进制 bearer 凭证）。浏览器跨域只允许 https://phoebe-wfan.github.io。个人 .ics 使用随机 calendar token，不暴露邮箱。
 
-后台自动任务必须先从 Sites 获取相同项目的当前元数据及服务凭证。只把 `siwc_bypass_bearer_token` 用于该站的 `OAI-Sites-Authorization: Bearer ...`，不得写入代码、日志、日历、GitHub 或任务说明。当前站点只允许所有者访问，更新端点依赖该平台访问边界。如果改成公开站点，须先设置 `UPDATE_SECRET` 并更新后台任务，且禁止没有此密钥的更新请求。
+管理接口 GET/PUT /api/update、POST /api/check 必须使用 UPDATE_SECRET。此秘密保存在托管服务环境，不能写进 GitHub、网页或日志。当前后台的 UPDATE_SECRET 与该站现有服务访问凭证一致，后台任务从 Sites get_site 动态读取同站凭证，只发送到该站的 Authorization 与 OAI-Sites-Authorization 两个 Bearer 头。以后旋转服务凭证时，必须同时更新后台秘密。
 
-数据模型详见 `lib/catalog.ts`。必要字段全部填写，`verifiedAt` 使用本次实际核实时间；来源必须 HTTPS。`status`：`announced`、`open`、`no_booking`、`sold_out`、`cancelled`。没有官方证据不得把状态改成 `open`，不得臆造放票时间。只有官方明确写出的时区时间可存入 `bookingOpensAt`。
+GET /api/update 返回活动与待审链接。PUT 接收 {events:[EventRecord],reviewedSubmissionIds:[]}，schema 见 lib/catalog.ts 和 app/api/update/route.ts。省略记录不删除；取消使用 status=cancelled；写后回读核实。seedEvents 是初始种子，D1 记录按稳定ID覆盖。
 
-### 每周发现
+## 定期管理
 
-每周一巴黎时间 09:00。先读现有内容和提交链接。官方来源优先：le19M、奥赛、卢浮宫、小皇宫、巴黎市活动日历与体育公告、主办方/品牌官网。Sortiraparis、Paris Friendly、可检索的 Instagram/TikTok 公开内容仅用于发现线索；价格、日期、预约入口必须交叉核实。不得声称可以读取登录内容或完整覆盖限时动态。
+每周一巴黎时间09:00发现与核实新活动，每小时检查官方开票页面。自动任务更新 D1 数据，前端及日历直接读取，不需每次重新构建。
 
-所有新活动须免费入场；若消费或特殊资格另有条件，完整记录 `freeNote`。只涉及付费消费、未明确免费且无法核实的活动不发布。四类严格对应；体育标明观赛或参与，商店活动不能暗示饮品免费。
+来源优先官网：le19M、奥赛、卢浮宫、小皇宫、巴黎市活动日历、体育公告及活动主办方。社交平台仅作为可公开检索的发现线索，核实后才发布。
 
-### 开票检查
+免费体育参与必须标明不是观赛赛事。快闪免费入场不等于商品/饮食免费。只有明确公开的开票时刻才能写 bookingOpensAt；没有证据保持 null。预约入口存在不保证尚有余票。
 
-关注的预约活动应比每周发现更频繁地检查，官方放票页面为准。更新时同时 `POST /api/check` 处理到点通知。当前服务没有邮件密钥时返回 disabled；不要声称已发送。自动检测有间隔，通知不保证抢到票。
+## 邮件后台
 
-## 邮件设置
-
-配置运行时秘密 `RESEND_API_KEY` 与已验证发信地址 `MAIL_FROM` 后重新发布。收件人只来自登录账号邮箱；仅用户明确开启 `emailEnabled` 后发送。后台 /api/check 每次处理到点或确认已开放的关注活动，幂等键防并发重复。第一次启用也可能收到已有预约入口的关注活动通知。标记已预约、取消关注、关闭邮件即停止后续通知。
-
-## 苹果日历
-
-私人站点的 `.ics` 下载可导入苹果日历，但导入不会随站点变化自动更新。未知开票时间不会生成空的提醒事件。自动订阅需要日历客户端可直接访问的托管地址；当前私人访问边界会拦住苹果日历。
-
-若将来公开托管日历，必须同时设置 `PUBLIC_CALENDAR_ENABLED=true` 和 `UPDATE_SECRET`；保持用户设置 API 需要身份。日历 feed 使用随机 bearer token，不能公开泄露。不要在未满足条件时启用订阅按钮。
-
-## 验证
-
-类型检查、生产构建，以及日历 UTF-8 折行、未知日期不生成提醒、提醒时刻/取消行为检查。数据库迁移只含 schema，不含样例数据。后台正式写入后读回，不依赖浏览器开着。
+运行时秘密 RESEND_API_KEY、验证域名的 MAIL_FROM；只有接收邮箱经过确认、用户启用 emailEnabled 后发送。通知使用幂等键和 D1 去重。关闭邮件、取消关注、标记已预约停止对应提醒。当前邮件服务未启用，不能声称已发送。

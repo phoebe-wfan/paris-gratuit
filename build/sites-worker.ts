@@ -23,6 +23,11 @@ export default {
         },
       };
     }
-    return runWithConnectorBinding(binding, () => handler.fetch(request, env, ctx));
+    const origin=request.headers.get('origin');
+    const permitted=origin==='https://phoebe-wfan.github.io';
+    const cors=new Headers();
+    if(permitted){cors.set('Access-Control-Allow-Origin',origin!);cors.set('Access-Control-Allow-Methods','GET,POST,PUT,OPTIONS');cors.set('Access-Control-Allow-Headers','Content-Type,X-Visitor-Key,Authorization');cors.set('Vary','Origin');}
+    if(request.method==='OPTIONS')return new Response(null,{status:permitted?204:403,headers:cors});
+    return runWithConnectorBinding(binding, async () => {const response=await handler.fetch(request,env,ctx);const headers=new Headers(response.headers);cors.forEach((value,key)=>headers.set(key,value));return new Response(response.body,{status:response.status,statusText:response.statusText,headers});});
   },
 };

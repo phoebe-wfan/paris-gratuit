@@ -1,0 +1,1 @@
+import {spawnSync} from 'node:child_process';import {renameSync,writeFileSync} from 'node:fs';const result=spawnSync(process.execPath,['node_modules/vite/bin/vite.js','build','--config','vite.config.pages.ts'],{stdio:'inherit'});if(result.status!==0)process.exit(result.status??1);renameSync('docs/pages.html','docs/index.html');writeFileSync('docs/.nojekyll','');
